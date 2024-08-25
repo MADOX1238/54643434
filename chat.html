@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="ar">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الدردشة العامة</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        margin: 0;
+        background-color: #f4f4f4;
+      }
+      #chat-box {
+        flex: 1;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        margin: 10px;
+        padding: 10px;
+        overflow-y: auto;
+        background-color: #fff;
+      }
+      #message-input {
+        width: calc(100% - 100px);
+        padding: 10px;
+        font-size: 16px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        margin: 10px;
+        box-sizing: border-box;
+      }
+      #send-button {
+        width: 90px;
+        padding: 10px;
+        font-size: 16px;
+        cursor: pointer;
+        margin: 10px;
+      }
+      .message {
+        margin-bottom: 10px;
+        padding: 5px;
+        border-bottom: 1px solid #ddd;
+      }
+      .username {
+        font-weight: bold;
+        margin-right: 5px;
+        display: inline-block;
+        padding: 2px 5px;
+        border-radius: 4px;
+      }
+      .text {
+        color: #333;
+      }
+      #online-users {
+        border-top: 1px solid #ccc;
+        padding: 10px;
+        background-color: #fff;
+        margin: 10px;
+        border-radius: 8px;
+      }
+      #private-chat {
+        position: fixed;
+        bottom: 0;
+        right: 0;
+        width: 300px;
+        background-color: #fff;
+        border: 1px solid #ccc;
+        border-radius: 8px 8px 0 0;
+        display: none;
+        flex-direction: column;
+      }
+      #private-chat-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 10px;
+        background-color: #007bff;
+        color: #fff;
+        border-radius: 8px 8px 0 0;
+      }
+      #private-chat-messages {
+        flex: 1;
+        padding: 10px;
+        overflow-y: auto;
+        background-color: #f9f9f9;
+      }
+      #private-message-input {
+        padding: 10px;
+        border-top: 1px solid #ccc;
+        display: flex;
+      }
+      #private-message-text {
+        width: calc(100% - 100px);
+        padding: 10px;
+        font-size: 16px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      #private-send-button {
+        width: 90px;
+        padding: 10px;
+        font-size: 16px;
+        cursor: pointer;
+        background-color: #007bff;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+      }
+      #close-private-chat {
+        cursor: pointer;
+        color: #fff;
+        font-weight: bold;
+        font-size: 16px;
+      }
+    </style>
+</head>
+<body>
+    <h1>الدردشة العامة</h1>
+    <div id="chat-box"></div>
+    <div style="display: flex; align-items: center; margin: 10px;">
+        <input type="text" id="message-input" placeholder="اكتب رسالة...">
+        <button id="send-button">إرسال</button>
+    </div>
+    <div id="online-users">
+      <h2>المتواجدين أونلاين</h2>
+      <ul id="online-users-list"></ul>
+    </div>
+
+    <!-- نافذة الدردشة الخاصة -->
+    <div id="private-chat">
+      <div id="private-chat-header">
+        <span id="private-chat-username">مستخدم</span>
+        <span id="close-private-chat">×</span>
+      </div>
+      <div id="private-chat-messages"></div>
+      <div id="private-message-input">
+        <input type="text" id="private-message-text" placeholder="اكتب رسالة خاصة...">
+        <button id="private-send-button">إرسال</button>
+      </div>
+    </div>
+
+    <script type="module">
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+      import { getDatabase, ref, set, onValue, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+
+      const firebaseConfig = {
+        apiKey: "API_KEY",
+        authDomain: "mad-oos.firebaseapp.com",
+        databaseURL: "https://mad-oos-default-rtdb.firebaseio.com",
+        projectId: "mad-oos",
+        storageBucket: "mad-oos.appspot.com",
+        messagingSenderId: "654045460789",
+        appId: "1:654045460789:web:a61dc378b49603e27b747c",
+        measurementId: "G-FDXV472NP8"
+      };
+
+      const app = initializeApp(firebaseConfig);
+      const database = getDatabase(app);
+
+      document.addEventListener('DOMContentLoaded', function () {
+        const chatBox = document.getElementById('chat-box');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const onlineUsersList = document.getElementById('online-users-list');
+        const privateChat = document.getElementById('private-chat');
+        const privateChatUsername = document.getElementById('private-chat-username');
+        const privateChatMessages = document.getElementById('private-chat-messages');
+        const privateMessageText = document.getElementById('private-message-text');
+        const privateSendButton = document.getElementById('private-send-button');
+        const closePrivateChat = document.getElementById('close-private-chat');
+
+        const username = localStorage.getItem('username');
+        const userColor = localStorage.getItem('userColor');
+        
+        if (!username) {
+          window.location.href = 'login.html';
+        }
+
+        const updateOnlineUsers = () => {
+          const onlineUsersRef = ref(database, 'onlineUsers');
+          onValue(onlineUsersRef, (snapshot) => {
+            onlineUsersList.innerHTML = '';
+            snapshot.forEach((childSnapshot) => {
+              const user = childSnapshot.val();
+              const userElement = document.createElement('li');
+              userElement.textContent = user.username;
+              userElement.style.color = user.userColor;
+              userElement.addEventListener('click', () => openPrivateChat(user.username));
+              onlineUsersList.appendChild(userElement);
+            });
+          });
+        };
+
+        const addUserToOnline = () => {
+          const onlineUsersRef = ref(database, 'onlineUsers/' + username);
+          set(onlineUsersRef, {
+            username: username,
+            userColor: userColor
+          });
+          onDisconnect(onlineUsersRef).remove();
+        };
+
+        const loadMessages = () => {
+          const messagesRef = ref(database, 'messages');
+          onValue(messagesRef, (snapshot) => {
+            chatBox.innerHTML = '';
+            snapshot.forEach((childSnapshot) => {
+              const message = childSnapshot.val();
+              if (message.text && message.text.trim() !== 'undefined') {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message';
+                messageElement.innerHTML = `<span class="username" style="color: ${message.userColor};">${message.username}:</span> <span class="text">${message.text}</span>`;
+                chatBox.appendChild(messageElement);
+              }
+            });
+            chatBox.scrollTop = chatBox.scrollHeight;
+          });
+        };
+
+        sendButton.addEventListener('click', function () {
+          const message = messageInput.value;
+          if (message.trim() !== '') {
+            const messagesRef = ref(database, 'messages/' + Date.now());
+            set(messagesRef, {
+              text: message,
+              username: username,
+              userColor: userColor,
+              timestamp: Date.now()
+            });
+            messageInput.value = '';
+          }
+        });
+
+        const openPrivateChat = (recipient) => {
+          privateChatUsername.textContent = recipient;
+          privateChat.style.display = 'flex';
+          loadPrivateMessages(recipient);
+        };
+
+        const loadPrivateMessages = (recipient) => {
+          const privateMessagesRef = ref(database, `privateMessages/${username}-${recipient}`);
+          onValue(privateMessagesRef, (snapshot) => {
+            privateChatMessages.innerHTML = '';
+            snapshot.forEach((childSnapshot) => {
+              const message = childSnapshot.val();
+              if (message.text && message.text.trim() !== 'undefined') {
+                const messageElement = document.createElement('div');
+                messageElement.className = 'message';
+                messageElement.innerHTML = `<span class="username" style="color: ${message.userColor};">${message.username}:</span
+                :</span> <span class="text">${message.text}</span>`;
+                privateChatMessages.appendChild(messageElement);
+              }
+            });
+            privateChatMessages.scrollTop = privateChatMessages.scrollHeight;
+          });
+        };
+
+        privateSendButton.addEventListener('click', function () {
+          const message = privateMessageText.value;
+          const recipient = privateChatUsername.textContent;
+          if (message.trim() !== '') {
+            const privateMessagesRef = ref(database, `privateMessages/${username}-${recipient}/${Date.now()}`);
+            set(privateMessagesRef, {
+              text: message,
+              username: username,
+              userColor: userColor,
+              timestamp: Date.now()
+            });
+            privateMessageText.value = '';
+          }
+        });
+
+        closePrivateChat.addEventListener('click', function () {
+          privateChat.style.display = 'none';
+        });
+
+        addUserToOnline();
+        loadMessages();
+        updateOnlineUsers();
+      });
+    </script>
+
+</body></html>
